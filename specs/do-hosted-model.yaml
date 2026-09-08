@@ -1,0 +1,22 @@
+# template: OpenCode on a DigitalOcean-hosted model (no third-party key)
+# Flat agents.yaml manifest for DigitalOcean Managed Agents.
+# Uses DigitalOcean serverless inference instead of an external provider.
+# ${VAR} values are expanded by doctl from your local environment (prompted when missing).
+name: my-do-hosted-agent
+agent: opencode
+size: mv-2vcpu-4gb
+persistent_workspace: true
+env:
+  HARNESS_INFERENCE_BASE_URL: "https://inference.do-ai.run/v1"
+  HARNESS_INFERENCE_MODEL: deepseek-v4-pro
+secrets:
+  HARNESS_INFERENCE_API_KEY: "${DIGITALOCEAN_INFERENCE_KEY}"
+permissions:
+  default: ask
+  rules:
+    - tool: bash
+      match: { command: "git *" }
+      action: allow
+    - tool: bash
+      match: { command: "rm -rf *" }
+      action: deny

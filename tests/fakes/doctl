@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Fake doctl for tests. Records every invocation to $MARS_FAKE_LOG (args joined with "|").
+set -uo pipefail
+
+fixtures="$(cd "$(dirname "${BASH_SOURCE[0]}")/../fixtures" && pwd)"
+if [[ -n "${MARS_FAKE_LOG:-}" ]]; then
+  { printf 'doctl'; printf '|%s' "$@"; printf '\n'; printf 'doctl-cwd|%s\n' "$PWD"; } >>"$MARS_FAKE_LOG"
+fi
+
+group="${FAKE_DOCTL_GROUP:-harness-runtime}"
+
+case "${1:-}" in
+  version)
+    echo "doctl version 1.167.0-beta"
+    exit 0
+    ;;
+  account)
+    echo '{"email":"tester@example.com","uuid":"u-1"}'
+    exit 0
+    ;;
+  auth)
+    echo "fake-token"
+    exit 0
+    ;;
+esac
+
+if [[ "${1:-}" != "$group" ]]; then
+  echo "Error: unknown command \"${1:-}\" for \"doctl\"" >&2
+  exit 255
+fi
+shift
+
+if [[ "${1:-}" == "--help" ]]; then
+  echo "Managed Agents Runtime Services (M.A.R.S)"
+  exit 0
+fi
+
+sub="${1:-}"
+shift || true
+
+case "$sub" in
+  # Read-only commands always succeed; FAKE_DOCTL_EXIT only affects mutating commands.
+  list)
+    cat "${MARS_FAKE_SESSIONS:-$fixtures/sessions.json}"
+    exit 0
+    ;;
+  config)
+    if [[ "${1:-}" == "list" ]]; then
+      cat "${MARS_FAKE_CONFIGS:-$fixtures/configs.json}"
+      exit 0
+    fi
+    echo "fake doctl config $*"
+    ;;
+  show)
+    jq --arg id "${1:-}" '.[] | select(.session_id == $id)' "${MARS_FAKE_SESSIONS:-$fixtures/sessions.json}"
+    exit 0
+    ;;
+  *)
+    echo "fake doctl $group $sub $*"
+    ;;
+esac
+exit "${FAKE_DOCTL_EXIT:-0}"

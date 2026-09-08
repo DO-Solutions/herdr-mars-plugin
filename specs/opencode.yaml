@@ -1,0 +1,21 @@
+# template: OpenCode (OpenAI key)
+# Flat agents.yaml manifest for DigitalOcean Managed Agents.
+# ${VAR} values are expanded by doctl from your local environment (prompted when missing).
+# Keep credentials under secrets:, never under env:.
+name: my-opencode-agent
+agent: opencode
+size: mv-2vcpu-4gb
+persistent_workspace: true
+env:
+  MODEL: gpt-4o
+secrets:
+  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+permissions:
+  default: ask
+  rules:
+    - tool: bash
+      match: { command: "git *" }
+      action: allow
+    - tool: bash
+      match: { command: "rm -rf *" }
+      action: deny

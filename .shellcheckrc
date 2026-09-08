@@ -1,0 +1,5 @@
+# Libraries are sourced from bin/mars with a computed path.
+external-sources=true
+source-path=SCRIPTDIR
+source-path=SCRIPTDIR/..
+shell=bash

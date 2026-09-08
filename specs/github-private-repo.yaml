@@ -1,0 +1,23 @@
+# template: Codex with team GitHub OAuth for private repos
+# Requires a one-time `doctl harness-runtime auth github` for your team.
+# GITHUB_TOKEN is injected from the team's GitHub connection; no personal token in the manifest.
+name: my-github-agent
+agent: codex
+size: mv-2vcpu-4gb
+persistent_workspace: true
+repos:
+  - your-org/your-private-repo
+env:
+  MODEL: gpt-5.4
+secrets:
+  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+  GITHUB_TOKEN: "oauth/github"
+permissions:
+  default: ask
+  rules:
+    - tool: bash
+      match: { command: "git *" }
+      action: allow
+    - tool: bash
+      match: { command: "rm -rf *" }
+      action: deny

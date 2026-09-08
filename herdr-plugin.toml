@@ -1,0 +1,95 @@
+id = "digitalocean.mars"
+name = "Mars: DigitalOcean Managed Agents"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Start, attach to, and manage DigitalOcean Managed Agents (Open Harness) sessions from Herdr panes."
+platforms = ["linux", "macos"]
+
+# Actions run headless; each one opens the interactive "task" popup below.
+
+[[actions]]
+id = "start"
+title = "Mars: start a managed agent session from a spec"
+command = ["bash", "bin/mars", "action", "start"]
+
+[[actions]]
+id = "attach"
+title = "Mars: attach to a running session in a split pane"
+command = ["bash", "bin/mars", "action", "attach"]
+
+[[actions]]
+id = "dashboard"
+title = "Mars: open the sessions dashboard"
+command = ["bash", "bin/mars", "action", "dashboard"]
+
+[[actions]]
+id = "logs"
+title = "Mars: replay a session's history in a split pane"
+command = ["bash", "bin/mars", "action", "logs"]
+
+[[actions]]
+id = "pause"
+title = "Mars: pause a session"
+command = ["bash", "bin/mars", "action", "pause"]
+
+[[actions]]
+id = "resume"
+title = "Mars: resume a paused session"
+command = ["bash", "bin/mars", "action", "resume"]
+
+[[actions]]
+id = "remove"
+title = "Mars: remove a session and release its sandbox"
+command = ["bash", "bin/mars", "action", "remove"]
+
+[[actions]]
+id = "proxy"
+title = "Mars: start the Codex proxy and connect a local Codex agent"
+command = ["bash", "bin/mars", "action", "proxy"]
+
+[[actions]]
+id = "upload"
+title = "Mars: upload a local file into a session sandbox"
+command = ["bash", "bin/mars", "action", "upload"]
+
+[[actions]]
+id = "download"
+title = "Mars: download a file from a session sandbox"
+command = ["bash", "bin/mars", "action", "download"]
+
+[[actions]]
+id = "validate"
+title = "Mars: validate a spec's permissions policy"
+command = ["bash", "bin/mars", "action", "validate"]
+
+[[actions]]
+id = "new-spec"
+title = "Mars: create a spec file from a template"
+command = ["bash", "bin/mars", "action", "new-spec"]
+
+[[actions]]
+id = "doctor"
+title = "Mars: check doctl, auth, and plugin configuration"
+command = ["bash", "bin/mars", "action", "doctor"]
+
+# Interactive popup that runs one task (picker, confirmation, doctl call).
+[[panes]]
+id = "task"
+title = "Mars"
+placement = "popup"
+width = "70%"
+height = "70%"
+command = ["bash", "bin/mars", "pane"]
+
+# Long-running terminal panes opened as splits next to the focused pane.
+[[panes]]
+id = "attach"
+title = "Mars session"
+placement = "split"
+command = ["bash", "bin/mars", "pane"]
+
+[[panes]]
+id = "run"
+title = "Mars command"
+placement = "split"
+command = ["bash", "bin/mars", "pane"]

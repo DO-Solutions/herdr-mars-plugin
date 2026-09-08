@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Presence-only stub so the proxy task believes the Codex CLI is installed.
+echo "fake codex $*"

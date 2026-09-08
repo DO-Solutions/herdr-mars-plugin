@@ -1,0 +1,22 @@
+# template: Codex (OpenAI key)
+# Flat agents.yaml manifest for DigitalOcean Managed Agents.
+# ${VAR} values are expanded by doctl from your local environment (prompted when missing).
+# Keep credentials under secrets:, never under env:.
+# Codex does not support default: deny; it falls back to ask.
+name: my-codex-agent
+agent: codex
+size: mv-2vcpu-4gb
+persistent_workspace: true
+env:
+  MODEL: gpt-5.4
+secrets:
+  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+permissions:
+  default: ask
+  rules:
+    - tool: bash
+      match: { command: "git *" }
+      action: allow
+    - tool: bash
+      match: { command: "rm -rf *" }
+      action: deny

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Fake herdr for tests. Records every invocation to $MARS_FAKE_LOG (args joined with "|").
+set -uo pipefail
+
+if [[ -n "${MARS_FAKE_LOG:-}" ]]; then
+  { printf 'herdr'; printf '|%s' "$@"; printf '\n'; } >>"$MARS_FAKE_LOG"
+fi
+
+case "${1:-} ${2:-} ${3:-}" in
+  "--version  ")
+    echo "herdr 0.9.0"
+    ;;
+  "plugin pane open")
+    echo '{"id":"t","result":{"type":"plugin_pane_opened","plugin_pane":{"plugin_id":"digitalocean.mars","entrypoint":"run","pane":{"pane_id":"w1:p9","tab_id":"w1:t1","workspace_id":"w1","label":"Mars"}}}}'
+    ;;
+  "pane layout "*)
+    if [[ "${FAKE_HERDR_TALL:-0}" == "1" ]]; then
+      echo '{"id":"t","result":{"type":"pane_layout","layout":{"focused_pane_id":"w1:p3","panes":[{"focused":true,"pane_id":"w1:p3","rect":{"height":50,"width":60,"x":0,"y":0}}]}}}'
+    else
+      echo '{"id":"t","result":{"type":"pane_layout","layout":{"focused_pane_id":"w1:p3","panes":[{"focused":true,"pane_id":"w1:p3","rect":{"height":50,"width":200,"x":0,"y":0}}]}}}'
+    fi
+    ;;
+  "pane split "*)
+    echo '{"id":"t","result":{"type":"pane_split","pane":{"pane_id":"w1:p10"}}}'
+    ;;
+  "pane wait-output "*)
+    if [[ "${FAKE_HERDR_WAIT_EXIT:-0}" != "0" ]]; then
+      echo '{"id":"t","error":{"code":"timeout","message":"timed out"}}' >&2
+      exit "$FAKE_HERDR_WAIT_EXIT"
+    fi
+    echo '{"id":"t","result":{"type":"pane_output_matched","pane_id":"w1:p9","matched_line":"listening on ws://127.0.0.1:1144"}}'
+    ;;
+  "agent start "*)
+    if [[ "${FAKE_HERDR_AGENT_EXIT:-0}" != "0" ]]; then
+      echo '{"id":"t","error":{"code":"agent_name_taken","message":"name in use"}}' >&2
+      exit "$FAKE_HERDR_AGENT_EXIT"
+    fi
+    echo '{"id":"t","result":{"type":"agent","agent":{"name":"'"${3:-}"'","status":"idle"}}}'
+    ;;
+  *)
+    echo '{"id":"t","result":{"type":"ok"}}'
+    ;;
+esac

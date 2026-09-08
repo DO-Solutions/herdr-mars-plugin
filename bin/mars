@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Mars: DigitalOcean Managed Agents for Herdr.
+#
+# Usage (called by Herdr through herdr-plugin.toml):
+#   mars action <task>   open the interactive popup for <task>   (manifest [[actions]])
+#   mars pane            run a pane entrypoint                    (manifest [[panes]])
+# Direct use for development:
+#   mars task <task>     run a task in the current terminal
+#   mars tasks           list tasks
+#   mars doctor          check requirements
+set -euo pipefail
+
+MARS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export MARS_ROOT
+
+# shellcheck source=lib/common.sh
+source "$MARS_ROOT/lib/common.sh"
+# shellcheck source=lib/config.sh
+source "$MARS_ROOT/lib/config.sh"
+# shellcheck source=lib/herdr.sh
+source "$MARS_ROOT/lib/herdr.sh"
+# shellcheck source=lib/doctl.sh
+source "$MARS_ROOT/lib/doctl.sh"
+# shellcheck source=lib/ui.sh
+source "$MARS_ROOT/lib/ui.sh"
+# shellcheck source=lib/tasks.sh
+source "$MARS_ROOT/lib/tasks.sh"
+# shellcheck source=lib/panes.sh
+source "$MARS_ROOT/lib/panes.sh"
+
+mars_usage() {
+  sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  printf '\nTasks: %s\n' "$MARS_TASKS"
+}
+
+# Actions run headless (their output goes to the plugin log), so each one opens
+# the interactive popup and forwards the invocation context to it.
+mars_action() {
+  local task="${1:-}"
+  [[ -n "$task" ]] || mars_die "usage: mars action <task>"
+  case " $MARS_TASKS " in
+    *" $task "*) ;;
+    *) mars_die "Unknown task '$task'. Known tasks: $MARS_TASKS" ;;
+  esac
+  local -a env=("MARS_TASK=$task")
+  local pane cwd
+  pane="$(mars_target_pane)"
+  cwd="$(mars_cwd)"
+  [[ -n "$pane" ]] && env+=("MARS_TARGET_PANE=$pane")
+  [[ -n "$cwd" ]] && env+=("MARS_CWD=$cwd")
+  herdr_open_popup task "${env[@]}"
+  mars_log "opened Mars popup for task '$task'"
+}
+
+main() {
+  # Keep the original stdin on fd 3 for user prompts; pickers use stdin for their option lists.
+  exec 3<&0
+  mars_load_config
+  local cmd="${1:-help}"
+  shift || true
+  case "$cmd" in
+    action) mars_action "$@" ;;
+    pane) pane_main ;;
+    task) task_run "${1:-}" ;;
+    tasks) printf '%s\n' "$MARS_TASKS" | tr ' ' '\n' ;;
+    doctor) task_run doctor ;;
+    help | -h | --help) mars_usage ;;
+    *)
+      mars_usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"
