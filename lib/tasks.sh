@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Interactive tasks. Each runs inside the "task" popup pane.
 
-MARS_TASKS="start attach dashboard logs pause resume remove proxy upload download validate new-spec doctor exec checkpoint port-forward"
+MARS_TASKS="start attach dashboard configs logs pause resume remove proxy upload download validate new-spec doctor exec checkpoint port-forward"
 
 # mars_pick_session <header> [status-regex] -> "id<TAB>name" on stdout.
 mars_pick_session() {
@@ -17,6 +17,24 @@ mars_pick_session() {
   fi
   value="$(while IFS=$'\t' read -r id name kind status created; do
     printf '%s\t%s\t%s\n' "$(mars_session_display "$id" "$name" "$kind" "$status" "$created")" "$id" "$name"
+  done <<<"$rows" | ui_pick "$header")" || return 1
+  printf '%s\n' "$value"
+}
+
+# mars_pick_config <header> -> "id<TAB>name" on stdout.
+mars_pick_config() {
+  local header="$1" rows id name created schema value
+  if [[ -n "${MARS_PRESELECTED_CONFIG:-}" ]]; then
+    printf '%s\n' "$MARS_PRESELECTED_CONFIG"
+    return 0
+  fi
+  rows="$(mars_configs_tsv)" || return 1
+  if [[ -z "$rows" ]]; then
+    ui_error "No Agent Configs found. Create one with the 'configs' action."
+    return 1
+  fi
+  value="$(while IFS=$'\t' read -r id name created schema; do
+    printf '%s\t%s\t%s\n' "$(mars_config_display "$id" "$name" "$created" "$schema")" "$id" "$name"
   done <<<"$rows" | ui_pick "$header")" || return 1
   printf '%s\n' "$value"
 }
@@ -69,10 +87,14 @@ task_start() {
   local cwd source spec name repo prompt label
   cwd="$(mars_cwd)"
   ui_header "Start a Managed Agents session"
-  source="$(printf '%s\n' \
-    $'From an agent manifest (agents.yaml)\tspec' \
-    $'From a saved Agent Config\tconfig' \
-    $'Quick start: pick a harness, no manifest\tharness' | MARS_PICK_AUTOSELECT_SINGLE=0 ui_pick "How do you want to start?")" || return 1
+  if [[ -n "${MARS_PRESELECTED_CONFIG:-}" ]]; then
+    source=config
+  else
+    source="$(printf '%s\n' \
+      $'From an agent manifest (agents.yaml)\tspec' \
+      $'From a saved Agent Config\tconfig' \
+      $'Quick start: pick a harness, no manifest\tharness' | MARS_PICK_AUTOSELECT_SINGLE=0 ui_pick "How do you want to start?")" || return 1
+  fi
 
   local args=(start)
   case "$source" in
@@ -85,12 +107,8 @@ task_start() {
       label="${name:-$(mars_spec_name "$spec")}"
       ;;
     config)
-      local rows id cname created chosen
-      rows="$(mars_configs_tsv)" || return 1
-      [[ -n "$rows" ]] || { ui_error "No Agent Configs found."; return 1; }
-      chosen="$(while IFS=$'\t' read -r id cname created; do
-        printf '%s  (%s)\t%s\t%s\n' "$cname" "${created:0:10}" "$id" "$cname"
-      done <<<"$rows" | ui_pick "Choose an Agent Config")" || return 1
+      local id cname chosen
+      chosen="$(mars_pick_config "Choose an Agent Config")" || return 1
       id="${chosen%%$'\t'*}"
       cname="${chosen#*$'\t'}"
       name="$(ui_ask "Session name (required)" "$cname-$(date +%m%d%H%M)")" || return 1
@@ -391,6 +409,88 @@ task_doctor() {
   [[ "$fail" -eq 0 ]]
 }
 
+# Create an immutable Agent Config from a local manifest.
+mars_config_create() {
+  local spec name status=0
+  spec="$(mars_pick_spec)" || return 1
+  name="$(ui_ask "Config name (unique within your team)" "$(mars_spec_name "$spec")")" || return 1
+  [[ -n "$name" ]] || return 1
+  ui_info "$(ohr_display config create --spec "$spec" --name "$name")"
+  ui_info "\${VAR} placeholders are resolved from your environment; doctl prompts for missing ones."
+  if ohr config create --spec "$spec" --name "$name"; then
+    herdr_notify "Mars: config created" "$name" "done"
+  else
+    status=$?
+  fi
+  ui_hold
+  return "$status"
+}
+
+# List the sessions started from one config.
+mars_config_sessions() {
+  local id="$1" name="$2" rows sid sname kind status created
+  rows="$(mars_config_sessions_tsv "$id")" || return 1
+  ui_header "Sessions started from $name"
+  if [[ -z "$rows" ]]; then
+    ui_info "(none)"
+    return 0
+  fi
+  while IFS=$'\t' read -r sid sname kind status created; do
+    ui_info "$(mars_session_display "$sid" "$sname" "$kind" "$status" "$created")  $sid"
+  done <<<"$rows"
+}
+
+task_configs() {
+  local chosen id name action
+  while true; do
+    chosen="$( {
+      mars_configs_tsv | while IFS=$'\t' read -r id name created schema; do
+        printf '%s\t%s\t%s\n' "$(mars_config_display "$id" "$name" "$created" "$schema")" "$id" "$name"
+      done
+      printf '+ create a config from a manifest\t__create\t\n'
+      printf '↻ refresh\t__refresh\t\n'
+      printf 'q quit\t__quit\t\n'
+    } | MARS_PICK_AUTOSELECT_SINGLE=0 ui_pick "Agent Configs (immutable manifests shared by your team)")" || return 0
+    id="${chosen%%$'\t'*}"
+    name="${chosen#*$'\t'}"
+    case "$id" in
+      __quit) return 0 ;;
+      __refresh) continue ;;
+      __create)
+        mars_config_create || true
+        continue
+        ;;
+    esac
+    action="$(printf '%s\n' \
+      $'show manifest\tshow' $'start a session\tstart' $'list sessions\tsessions' $'delete\tdelete' $'back\tback' \
+      | MARS_PICK_AUTOSELECT_SINGLE=0 ui_pick "$name: choose an action")" || continue
+    case "$action" in
+      back) continue ;;
+      show)
+        mars_config_show "$id" || true
+        ui_hold
+        ;;
+      start)
+        MARS_PRESELECTED_CONFIG="$id"$'\t'"$name" task_start
+        return $?
+        ;;
+      sessions)
+        mars_config_sessions "$id" "$name" || true
+        ui_hold
+        ;;
+      delete)
+        if ui_confirm "Really delete config '$name' ($id)? Active sessions started from it must be removed first."; then
+          if ohr config delete "$id"; then
+            herdr_notify "Mars: config deleted" "$name" "done"
+          else
+            ui_hold
+          fi
+        fi
+        ;;
+    esac
+  done
+}
+
 task_dashboard() {
   local chosen id name action
   while true; do
@@ -399,6 +499,7 @@ task_dashboard() {
         printf '%s\t%s\t%s\n' "$(mars_session_display "$id" "$name" "$kind" "$status" "$created")" "$id" "$name"
       done
       printf '+ start a new session\t__start\t\n'
+      printf '≡ agent configs\t__configs\t\n'
       printf '↻ refresh\t__refresh\t\n'
       printf 'q quit\t__quit\t\n'
     } | MARS_PICK_AUTOSELECT_SINGLE=0 ui_pick "Managed Agents sessions")" || return 0
@@ -408,6 +509,7 @@ task_dashboard() {
       __quit) return 0 ;;
       __refresh) continue ;;
       __start) task_start; return $? ;;
+      __configs) task_configs; return $? ;;
     esac
     action="$(printf '%s\n' \
       $'attach\tattach' $'logs\tlogs' $'show details\tshow' $'pause\tpause' $'resume\tresume' \

@@ -23,6 +23,11 @@ title = "Mars: open the sessions dashboard"
 command = ["bash", "bin/mars", "action", "dashboard"]
 
 [[actions]]
+id = "configs"
+title = "Mars: browse Agent Configs (show manifest, start, delete, create)"
+command = ["bash", "bin/mars", "action", "configs"]
+
+[[actions]]
 id = "logs"
 title = "Mars: replay a session's history in a split pane"
 command = ["bash", "bin/mars", "action", "logs"]

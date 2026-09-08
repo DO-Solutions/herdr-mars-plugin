@@ -60,13 +60,26 @@ mars_pretty_kind() {
 mars_sessions_tsv() {
   local filter="${1:-.}" json
   json="$(ohr list -o json --page-size "${MARS_LIST_PAGE_SIZE:-100}")" || return 1
+  mars_sessions_json_tsv "$filter" <<<"$json"
+}
+
+# mars_config_sessions_tsv <config-id>: sessions started from one Agent Config, same columns.
+mars_config_sessions_tsv() {
+  local json
+  json="$(ohr config list-sessions "$1" -o json)" || return 1
+  mars_sessions_json_tsv '.' <<<"$json"
+}
+
+# mars_sessions_json_tsv <status-regex> <<< "$json"
+mars_sessions_json_tsv() {
+  local filter="${1:-.}"
   jq -r --arg re "$filter" '
     def s(f): (f // "") | tostring;
     (if type == "array" then . else (.sessions // .items // []) end)
     | map(select((s(.status) | test($re))))
     | .[]
     | [ s(.session_id // .id), s(.name), s(.agent_kind // .agent), s(.status), s(.created_at) ]
-    | @tsv' <<<"$json"
+    | @tsv'
 }
 
 # Session display line for pickers: "● name  kind · status · created".
@@ -83,14 +96,40 @@ mars_session_display() {
   printf '%s %s  %s · %s · %s' "$dot" "${name:-$id}" "$(mars_pretty_kind "$kind")" "$pstatus" "$created"
 }
 
-# mars_configs_tsv: id<TAB>name<TAB>created
+# mars_configs_tsv: id<TAB>name<TAB>created<TAB>schema
 mars_configs_tsv() {
   local json
   json="$(ohr config list -o json)" || return 1
   jq -r '
     def s(f): (f // "") | tostring;
     (if type == "array" then . else (.configs // .items // []) end)
-    | .[] | [ s(.id), s(.name), s(.created_at) ] | @tsv' <<<"$json"
+    | .[] | [ s(.id), s(.name), s(.created_at), s(.agentspec_schema_version) ] | @tsv' <<<"$json"
+}
+
+# Config display line for pickers: "name  schema · created".
+mars_config_display() {
+  local id="$1" name="$2" created="$3" schema="$4"
+  created="${created:0:16}"
+  created="${created/T/ }"
+  schema="${schema##*/}"
+  printf '%s  %s · %s' "${name:-$id}" "${schema:-?}" "$created"
+}
+
+# mars_config_show <config-id>: print one config's metadata and manifest to stderr.
+# doctl redacts secret values; the manifest is the canonical form stored by the API.
+mars_config_show() {
+  local id="$1" json
+  json="$(ohr config get "$id" -o json)" || return 1
+  jq -r '
+    def s(f): (f // "") | tostring;
+    "Name      \(s(.name))",
+    "ID        \(s(.id))",
+    "Schema    \(s(.agentspec_schema_version))",
+    "Hash      \(s(.content_hash))",
+    "Created   \(s(.created_at))\(if .created_by then " by \(.created_by)" else "" end)",
+    "",
+    "Manifest (secret values are redacted):"' <<<"$json" >&2
+  jq '.manifest // .' <<<"$json" >&2
 }
 
 # Top-level `name:` from a flat manifest (best effort, no YAML parser needed).

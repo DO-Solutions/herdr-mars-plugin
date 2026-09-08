@@ -45,10 +45,22 @@ case "$sub" in
     exit 0
     ;;
   config)
-    if [[ "${1:-}" == "list" ]]; then
-      cat "${MARS_FAKE_CONFIGS:-$fixtures/configs.json}"
-      exit 0
-    fi
+    configs="${MARS_FAKE_CONFIGS:-$fixtures/configs.json}"
+    case "${1:-}" in
+      list)
+        cat "$configs"
+        exit 0
+        ;;
+      get | show)
+        jq --arg id "${2:-}" '.[] | select(.id == $id)
+          | . + {content_hash: "abc123", manifest: {name: .name, agent: "opencode", size: "mv-2vcpu-4gb"}}' "$configs"
+        exit 0
+        ;;
+      list-sessions | sessions)
+        jq --arg id "${2:-}" 'map(select(.config_id == $id))' "${MARS_FAKE_SESSIONS:-$fixtures/sessions.json}"
+        exit 0
+        ;;
+    esac
     echo "fake doctl config $*"
     ;;
   show)

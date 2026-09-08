@@ -24,6 +24,8 @@ export MARS_USE_FZF=0
 export MARS_NO_HOLD=1
 export HOME="$TMP/home"
 mkdir -p "$HOME"
+# Test cwds live under the plugin checkout; stop git from discovering its remote as the repo default.
+export GIT_CEILING_DIRECTORIES="$ROOT/tests"
 
 # ---------------------------------------------------------------- harness
 
@@ -119,6 +121,7 @@ if t tasks_lists_all_tasks; then
   assert_status 0
   assert_out "dashboard"
   assert_out "new-spec"
+  assert_out "configs"
 fi
 
 if t unknown_command_exits_2; then
@@ -335,10 +338,73 @@ if t new_spec_refuses_overwrite_without_confirm; then
 fi
 
 if t dashboard_pause_then_quit; then
-  run_pane task "1\n4\n6\n" MARS_TASK=dashboard
+  run_pane task "1\n4\n7\n" MARS_TASK=dashboard
   assert_status 0
   assert_log "doctl|harness-runtime|pause|01a0-alpha"
   assert_out "+ start a new session"
+  assert_out "agent configs"
+fi
+
+if t dashboard_opens_configs_list; then
+  run_pane task "5\n5\n" MARS_TASK=dashboard
+  assert_status 0
+  assert_log "doctl|harness-runtime|config|list|-o|json"
+  assert_out "team-opencode  flat.v1"
+fi
+
+# configs menu: 1) cfg-1 2) cfg-2 3) create 4) refresh 5) quit
+# per-config actions: 1) show 2) start 3) sessions 4) delete 5) back
+if t configs_show_prints_metadata_and_manifest; then
+  run_pane task "1\n1\n5\n" MARS_TASK=configs
+  assert_status 0
+  assert_log "doctl|harness-runtime|config|get|cfg-1|-o|json"
+  assert_out "Name      team-opencode"
+  assert_out "Schema    agents.digitalocean.com/flat.v1"
+  assert_out "Manifest (secret values are redacted)"
+  assert_out '"agent": "opencode"'
+fi
+
+if t configs_start_session_skips_config_picker; then
+  run_pane task "2\n2\nfrom-cfg2\ngo\n" MARS_TASK=configs
+  assert_status 0
+  assert_log "MARS_RUN_ARGS=[\"start\",\"--config-id\",\"cfg-2\",\"--name\",\"from-cfg2\",\"--prompt\",\"go\"]"
+  assert_log "MARS_RUN_LABEL=mars: from-cfg2"
+  assert_eq "$(grep -c 'config|list|-o|json' "$MARS_FAKE_LOG")" "1"
+fi
+
+if t configs_lists_sessions_for_one_config; then
+  run_pane task "2\n3\n5\n" MARS_TASK=configs
+  assert_status 0
+  assert_log "doctl|harness-runtime|config|list-sessions|cfg-2|-o|json"
+  assert_out "Sessions started from hermes-demo"
+  assert_out "gamma"
+  if grep -q "alpha" "$ERR"; then fail "session from another config listed"; else ok; fi
+fi
+
+if t configs_delete_requires_confirmation; then
+  run_pane task "1\n4\nn\n5\n" MARS_TASK=configs
+  assert_status 0
+  assert_not_log "doctl|harness-runtime|config|delete"
+  run_pane task "1\n4\ny\n5\n" MARS_TASK=configs
+  assert_status 0
+  assert_log "doctl|harness-runtime|config|delete|cfg-1"
+  assert_log "herdr|notification|show|Mars: config deleted|--sound|done|--body|team-opencode"
+fi
+
+if t configs_create_from_manifest; then
+  write_spec "$TEST_CWD/agents.yaml" demo-agent
+  run_pane task "3\n\n5\n" MARS_TASK=configs
+  assert_status 0
+  assert_log "doctl|harness-runtime|config|create|--spec|$TEST_CWD/agents.yaml|--name|demo-agent"
+  assert_log "herdr|notification|show|Mars: config created|--sound|done|--body|demo-agent"
+fi
+
+if t configs_create_failure_keeps_menu; then
+  write_spec "$TEST_CWD/agents.yaml" demo-agent
+  FAKE_DOCTL_EXIT=1 run_pane task "3\nteam-cfg\n5\n" MARS_TASK=configs
+  assert_status 0
+  assert_log "doctl|harness-runtime|config|create|--spec|$TEST_CWD/agents.yaml|--name|team-cfg"
+  assert_not_log "Mars: config created"
 fi
 
 if t dashboard_attach_exits_after_opening_pane; then

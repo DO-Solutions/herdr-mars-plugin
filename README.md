@@ -12,7 +12,8 @@ Long-running things such as attaching to a session, replaying logs, or the Codex
 | --- | --- |
 | `start` | Pick a manifest (`agents.yaml`), a saved Agent Config, or a bare harness. Optionally set a name, a GitHub repo to clone, and an initial prompt. The session starts and attaches in a new split pane. |
 | `attach` | Pick a live session and attach to it in a split pane. Ctrl-D detaches and keeps the session alive. |
-| `dashboard` | Browse all sessions and act on one: attach, logs, show, pause, resume, checkpoint, proxy, exec, port-forward, upload, download, remove. |
+| `dashboard` | Browse all sessions and act on one: attach, logs, show, pause, resume, checkpoint, proxy, exec, port-forward, upload, download, remove. Also jumps to the Agent Configs list. |
+| `configs` | Browse your team's saved Agent Configs. Show a config's manifest, start a session from it, list its sessions, delete it, or create a new one from a local manifest. |
 | `logs` | Replay a session's event history in a split pane. |
 | `pause` / `resume` / `remove` | Lifecycle operations with a picker filtered to the sessions that make sense for each. `remove` asks for confirmation. |
 | `proxy` | Start the Codex proxy for a session, wait until it listens, then start a local Codex agent in a Herdr pane bridged to it. |
@@ -195,6 +196,26 @@ herdr plugin action invoke digitalocean.mars.validate
 
 The validator flags credentials placed under `env:` instead of `secrets:` and conflicting model keys.
 
+### Inspect and reuse Agent Configs
+
+Agent Configs are immutable manifests stored with the Managed Agents API and shared across your team.
+
+```sh
+herdr plugin action invoke digitalocean.mars.configs
+```
+
+The list shows each config's name, schema version, and creation time.
+Pick one, then choose:
+
+- `show manifest` prints the config's metadata and the manifest exactly as the API stores it. Secret values are redacted by doctl.
+- `start a session` asks for a session name and an optional prompt, then starts and attaches in a split pane.
+- `list sessions` shows every session started from that config with its status.
+- `delete` asks for confirmation. The API refuses while sessions from the config are still active, so remove those first.
+
+Choose `+ create a config from a manifest` to publish a local `agents.yaml` as a new config.
+The name must be unique within your team, and `${VAR}` placeholders are resolved from your environment when the config is created.
+Configs cannot be edited; create a new one to change a manifest.
+
 ### Manage everything from one place
 
 ```sh
@@ -203,6 +224,7 @@ herdr plugin action invoke digitalocean.mars.dashboard
 
 The dashboard lists every session with its harness, status, and age.
 Pick one, then choose attach, logs, show, pause, resume, checkpoint, proxy, exec, port-forward, upload, download, or remove.
+The list also has an entry that opens the Agent Configs browser described above.
 Operations that finish in the popup return you to the list; operations that open a pane close the popup so you can use it.
 
 ### Bind the two you use most
