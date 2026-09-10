@@ -41,7 +41,22 @@ shift || true
 case "$sub" in
   # Read-only commands always succeed; FAKE_DOCTL_EXIT only affects mutating commands.
   list)
-    cat "${MARS_FAKE_SESSIONS:-$fixtures/sessions.json}"
+    # The real API returns only live sessions unless --status asks for a specific
+    # one, so finished runs are invisible to an unfiltered list. Model that here.
+    status=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --status) status="${2:-}"; shift 2 ;;
+        --status=*) status="${1#--status=}"; shift ;;
+        *) shift ;;
+      esac
+    done
+    if [[ -n "$status" ]]; then
+      jq --arg s "$status" 'map(select(.status == $s))' "${MARS_FAKE_SESSIONS:-$fixtures/sessions.json}"
+    else
+      jq 'map(select(.status != "SESSION_STATUS_DESTROYED" and .status != "SESSION_STATUS_FAILED"))' \
+        "${MARS_FAKE_SESSIONS:-$fixtures/sessions.json}"
+    fi
     exit 0
     ;;
   config)

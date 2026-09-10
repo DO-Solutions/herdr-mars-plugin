@@ -12,9 +12,9 @@ Long-running things such as attaching to a session, replaying logs, or the Codex
 | --- | --- |
 | `start` | Pick a manifest (`agents.yaml`), a saved Agent Config, or a bare harness. Optionally set a name, a GitHub repo to clone, and an initial prompt. The session starts and attaches in a new split pane. |
 | `attach` | Pick a live session and attach to it in a split pane. Ctrl-D detaches and keeps the session alive. |
-| `dashboard` | Browse all sessions and act on one: attach, logs, show, pause, resume, checkpoint, proxy, exec, port-forward, upload, download, remove. Also jumps to the Agent Configs list. |
+| `dashboard` | Browse all sessions and act on one: attach, logs, show, pause, resume, checkpoint, proxy, exec, port-forward, upload, download, remove. Also opens recent finished runs, and jumps to the Agent Configs list. |
 | `configs` | Browse your team's saved Agent Configs. Show a config's manifest, start a session from it, list its sessions, delete it, or create a new one from a local manifest. |
-| `logs` | Replay a session's event history in a split pane. |
+| `logs` | Replay a session's event history in a split pane. Finished runs are included, since their history usually outlives the sandbox. |
 | `pause` / `resume` / `remove` | Lifecycle operations with a picker filtered to the sessions that make sense for each. `remove` asks for confirmation. |
 | `proxy` | Start the Codex proxy for a session, wait until it listens, then start a local Codex agent in a Herdr pane bridged to it. |
 | `exec` | Run one shell command inside a session sandbox and show the output. |
@@ -133,6 +133,16 @@ To replay everything the agent has done so far:
 ```sh
 herdr plugin action invoke digitalocean.mars.logs
 ```
+
+### Look at a run that has already finished
+
+A session started by a `--session-mode fresh` trigger is destroyed as soon as its
+run ends, so it drops out of the session list at the exact moment you want to
+read it. Its event history outlives it.
+
+Open the dashboard and choose "⏱ recent runs (finished)" to list destroyed and
+failed sessions, newest first, then pick `logs` to replay one. `MARS_RECENT_LIMIT`
+controls how many are listed.
 
 ### Preview a dev server running in the sandbox
 
@@ -276,6 +286,7 @@ cp config/env.example "$CONFIG_DIR/.env"
 | `MARS_NOTIFY` | `1` | Show Herdr notifications after lifecycle actions. |
 | `MARS_USE_FZF` | `auto` | Use fzf for pickers when installed. |
 | `MARS_LIST_PAGE_SIZE` | `100` | Sessions fetched per list call. |
+| `MARS_RECENT_LIMIT` | `20` | Finished runs shown under "recent runs", newest first. |
 
 Process environment overrides the `.env` file.
 Plugin state (last used manifest and session) lives in the Herdr-provided state directory.

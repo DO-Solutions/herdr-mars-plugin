@@ -55,12 +55,46 @@ mars_pretty_kind() {
   printf '%s\n' "$k" | tr '[:upper:]' '[:lower:]' | tr '_' '-'
 }
 
-# mars_sessions_tsv [status-regex]
+# Statuses the API leaves out of an unfiltered list. Each has to be asked for
+# by name, so a finished run is invisible until you request its status.
+MARS_FINISHED_STATUSES=(SESSION_STATUS_DESTROYED SESSION_STATUS_FAILED)
+
+# Normalise a list response to a bare JSON array.
+mars_sessions_array() {
+  jq 'if type == "array" then . else (.sessions // .items // []) end'
+}
+
+# mars_sessions_tsv [status-regex] [include-finished]
 # Prints: session_id<TAB>name<TAB>kind<TAB>status<TAB>created
 mars_sessions_tsv() {
-  local filter="${1:-.}" json
-  json="$(ohr list -o json --page-size "${MARS_LIST_PAGE_SIZE:-100}")" || return 1
+  local filter="${1:-.}" include="${2:-0}" json extra status
+  json="$(ohr list -o json --page-size "${MARS_LIST_PAGE_SIZE:-100}" | mars_sessions_array)" || return 1
+  if [[ "$include" == 1 ]]; then
+    for status in "${MARS_FINISHED_STATUSES[@]}"; do
+      extra="$(mars_finished_json "$status")" || extra='[]'
+      json="$(jq -n --argjson a "$json" --argjson b "$extra" '$a + $b')" || return 1
+    done
+  fi
   mars_sessions_json_tsv "$filter" <<<"$json"
+}
+
+# mars_finished_json <status>: one page of finished sessions, or [] if the call fails.
+mars_finished_json() {
+  ohr list -o json --page-size "${MARS_RECENT_LIMIT:-20}" --status "$1" 2>/dev/null \
+    | mars_sessions_array 2>/dev/null || printf '[]'
+}
+
+# mars_recent_sessions_tsv: finished runs only, newest first, capped at
+# MARS_RECENT_LIMIT. Same columns as mars_sessions_tsv.
+mars_recent_sessions_tsv() {
+  local limit="${MARS_RECENT_LIMIT:-20}" json='[]' extra status
+  for status in "${MARS_FINISHED_STATUSES[@]}"; do
+    extra="$(mars_finished_json "$status")" || extra='[]'
+    json="$(jq -n --argjson a "$json" --argjson b "$extra" '$a + $b')" || return 1
+  done
+  jq -n --argjson a "$json" --argjson n "$limit" \
+    '$a | sort_by(.created_at // "") | reverse | .[:$n]' \
+    | mars_sessions_json_tsv '.'
 }
 
 # mars_config_sessions_tsv <config-id>: sessions started from one Agent Config, same columns.

@@ -3,14 +3,15 @@
 
 MARS_TASKS="start attach dashboard configs logs pause resume remove proxy upload download validate new-spec doctor exec checkpoint port-forward"
 
-# mars_pick_session <header> [status-regex] -> "id<TAB>name" on stdout.
+# mars_pick_session <header> [status-regex] [include-finished] -> "id<TAB>name" on stdout.
 mars_pick_session() {
-  local header="$1" filter="${2:-^(?!SESSION_STATUS_DESTROYED)}" rows id name kind status created value
+  local header="$1" filter="${2:-^(?!SESSION_STATUS_DESTROYED)}" include="${3:-0}"
+  local rows id name kind status created value
   if [[ -n "${MARS_PRESELECTED_SESSION:-}" ]]; then
     printf '%s\n' "$MARS_PRESELECTED_SESSION"
     return 0
   fi
-  rows="$(mars_sessions_tsv "$filter")" || return 1
+  rows="$(mars_sessions_tsv "$filter" "$include")" || return 1
   if [[ -z "$rows" ]]; then
     ui_error "No matching sessions."
     return 1
@@ -150,7 +151,9 @@ task_attach() {
 
 task_logs() {
   local chosen id name
-  chosen="$(mars_pick_session "Replay history for a session" '.')" || return 1
+  # Finished runs are the common case here, and the API omits them from an
+  # unfiltered list, so ask for them explicitly.
+  chosen="$(mars_pick_session "Replay history for a session" '.' 1)" || return 1
   id="${chosen%%$'\t'*}"
   name="${chosen#*$'\t'}"
   mars_open_run "mars logs: $name" 1 logs "$id" >/dev/null
@@ -491,6 +494,41 @@ task_configs() {
   done
 }
 
+# Finished runs: sandboxes are gone, so only history is left to look at.
+# A trigger-fired session is destroyed the moment it finishes, which is
+# usually the moment you want its logs.
+mars_recent_runs() {
+  local chosen id name action rows
+  while true; do
+    rows="$(mars_recent_sessions_tsv)" || return 1
+    if [[ -z "$rows" ]]; then
+      ui_error "No finished runs found."
+      ui_hold
+      return 0
+    fi
+    chosen="$( {
+      while IFS=$'\t' read -r id name kind status created; do
+        printf '%s\t%s\t%s\n' "$(mars_session_display "$id" "$name" "$kind" "$status" "$created")" "$id" "$name"
+      done <<<"$rows"
+      printf '↩ back\t__back\t\n'
+    } | MARS_PICK_AUTOSELECT_SINGLE=0 ui_pick "Recent runs (newest first)")" || return 0
+    id="${chosen%%$'\t'*}"
+    name="${chosen#*$'\t'}"
+    [[ "$id" == "__back" ]] && return 0
+    # No attach, pause, resume, checkpoint or remove: the sandbox is gone.
+    action="$(printf '%s\n' $'logs\tlogs' $'show details\tshow' $'back\tback' \
+      | MARS_PICK_AUTOSELECT_SINGLE=0 ui_pick "$name: choose an action")" || continue
+    case "$action" in
+      back) continue ;;
+      show)
+        ohr show "$id" -o json | jq . >&2 || true
+        ui_hold
+        ;;
+      logs) mars_open_run "mars logs: $name" 1 logs "$id" >/dev/null; return $? ;;
+    esac
+  done
+}
+
 task_dashboard() {
   local chosen id name action
   while true; do
@@ -500,6 +538,7 @@ task_dashboard() {
       done
       printf '+ start a new session\t__start\t\n'
       printf '≡ agent configs\t__configs\t\n'
+      printf '⏱ recent runs (finished)\t__recent\t\n'
       printf '↻ refresh\t__refresh\t\n'
       printf 'q quit\t__quit\t\n'
     } | MARS_PICK_AUTOSELECT_SINGLE=0 ui_pick "Managed Agents sessions")" || return 0
@@ -510,6 +549,7 @@ task_dashboard() {
       __refresh) continue ;;
       __start) task_start; return $? ;;
       __configs) task_configs; return $? ;;
+      __recent) mars_recent_runs || true; continue ;;
     esac
     action="$(printf '%s\n' \
       $'attach\tattach' $'logs\tlogs' $'show details\tshow' $'pause\tpause' $'resume\tresume' \
