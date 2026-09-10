@@ -99,6 +99,10 @@ assert_out() {
   if grep -q -F -- "$1" "$OUT" "$ERR"; then ok; else fail "output missing: $1"; fi
 }
 
+assert_not_out() {
+  if grep -q -F -- "$1" "$OUT" "$ERR"; then fail "output unexpectedly has: $1"; else ok; fi
+}
+
 assert_file_has() {
   if [[ -f "$1" ]] && grep -q -F -- "$2" "$1"; then ok; else fail "$1 missing: $2"; fi
 }
@@ -346,10 +350,56 @@ if t dashboard_pause_then_quit; then
 fi
 
 if t dashboard_opens_configs_list; then
-  run_pane task "5\n5\n" MARS_TASK=dashboard
+  run_pane task "4\n5\n" MARS_TASK=dashboard
   assert_status 0
   assert_log "doctl|harness-runtime|config|list|-o|json"
   assert_out "team-opencode  flat.v1"
+fi
+
+# dashboard menu: 1) alpha 2) beta 3) start 4) configs 5) recent runs 6) refresh 7) quit
+# recent runs list: 1) gamma 2) back;  recent actions: 1) logs 2) show details 3) back
+
+if t dashboard_omits_finished_sessions; then
+  run_pane task "7\n" MARS_TASK=dashboard
+  assert_status 0
+  assert_out "alpha"
+  # gamma is destroyed: the API leaves it out of an unfiltered list.
+  assert_not_out "gamma"
+fi
+
+if t dashboard_recent_runs_lists_finished; then
+  run_pane task "5\n2\n7\n" MARS_TASK=dashboard
+  assert_status 0
+  assert_log "doctl|harness-runtime|list|-o|json|--page-size|20|--status|SESSION_STATUS_DESTROYED"
+  assert_log "doctl|harness-runtime|list|-o|json|--page-size|20|--status|SESSION_STATUS_FAILED"
+  assert_out "gamma"
+fi
+
+if t recent_runs_actions_exclude_lifecycle; then
+  run_pane task "5\n1\n3\n2\n7\n" MARS_TASK=dashboard
+  assert_status 0
+  assert_out "show details"
+  # The sandbox is gone, so nothing that acts on one is offered.
+  assert_not_out "port-forward"
+  assert_not_out "checkpoint"
+fi
+
+if t recent_runs_logs_opens_pane; then
+  run_pane task "5\n1\n1\n" MARS_TASK=dashboard
+  assert_status 0
+  assert_log "--env|MARS_RUN_ARGS=[\"logs\",\"01a0-gamma\"]|--env|MARS_RUN_HOLD=1|--env|MARS_RUN_LABEL=mars logs: gamma"
+fi
+
+if t recent_runs_respects_limit; then
+  run_pane task "5\n2\n7\n" MARS_TASK=dashboard MARS_RECENT_LIMIT=1
+  assert_status 0
+  assert_log "doctl|harness-runtime|list|-o|json|--page-size|1|--status|SESSION_STATUS_DESTROYED"
+fi
+
+if t logs_picker_asks_for_finished_sessions; then
+  run_pane task "3\n" MARS_TASK=logs
+  # Replaying a finished run is the common case, so logs must request them.
+  assert_log "doctl|harness-runtime|list|-o|json|--page-size|20|--status|SESSION_STATUS_DESTROYED"
 fi
 
 # configs menu: 1) cfg-1 2) cfg-2 3) create 4) refresh 5) quit
