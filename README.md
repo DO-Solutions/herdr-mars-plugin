@@ -73,6 +73,15 @@ command = "digitalocean.mars.start"
 description = "start a managed agent session"
 ```
 
+## Let an LLM set it up
+
+Copy the prompt in [docs/LLM-SETUP.md](docs/LLM-SETUP.md) into an AI coding agent.
+It installs the plugin, runs `doctor`, and walks you through the rest.
+
+The prompt tells the agent to ask before it installs anything or edits your Herdr
+config, and never to start, pause, or remove a session as a smoke test.
+It will not touch your DigitalOcean credentials; `doctl auth init` stays yours to run.
+
 ## Examples
 
 Each example starts from a Herdr pane.
